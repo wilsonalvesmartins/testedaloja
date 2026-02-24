@@ -89,6 +89,36 @@ export default function App() {
   }, [categories]);
 
 
+  // --- BLINDAGEM CONTRA FALHAS (SISTEMA DE AUTO-RECUPERAÇÃO) ---
+  const safeRender = (renderFn) => {
+    try {
+      const component = renderFn();
+      return component;
+    } catch (err) {
+      console.error("Erro Crítico de Renderização:", err);
+      return (
+        <div className="fixed inset-0 z-[999] bg-gray-50 flex flex-col items-center justify-center p-6">
+          <div className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl border-2 border-red-100 text-center">
+            <AlertCircle className="h-20 w-20 text-red-500 mx-auto mb-6" />
+            <h2 className="text-2xl font-black text-gray-900 mb-4">Dados Incompatíveis</h2>
+            <p className="text-gray-600 mb-8">
+              O sistema encontrou dados de versões antigas armazenados no seu navegador que estão a causar conflito. Clique no botão abaixo para limpar a memória e reparar o sistema imediatamente.
+            </p>
+            <button 
+              onClick={() => { localStorage.clear(); window.location.reload(); }} 
+              className="w-full bg-red-600 text-white px-6 py-4 rounded-xl font-bold hover:bg-red-700 shadow-lg transition-transform hover:scale-105"
+            >
+              Reparar Sistema (Apagar Dados Antigos)
+            </button>
+            <p className="mt-6 text-xs text-gray-400 bg-gray-50 p-3 rounded-lg overflow-hidden text-left font-mono">
+              Log: {err.message}
+            </p>
+          </div>
+        </div>
+      );
+    }
+  };
+
   // --- FUNÇÕES DO CARRINHO ---
   const addToCart = (product, size) => {
     setCart(prev => {
@@ -131,7 +161,7 @@ export default function App() {
 
   // --- FUNÇÕES DE CHECKOUT ---
   const formatCPF = (val) => {
-    let formatted = val.replace(/\D/g, '');
+    let formatted = String(val).replace(/\D/g, '');
     if (formatted.length > 3) formatted = formatted.slice(0,3) + '.' + formatted.slice(3);
     if (formatted.length > 7) formatted = formatted.slice(0,7) + '.' + formatted.slice(7);
     if (formatted.length > 11) formatted = formatted.slice(0,11) + '-' + formatted.slice(11, 13);
@@ -144,7 +174,7 @@ export default function App() {
     setCustomerInfo(prev => ({ ...prev, cpf: formatted }));
 
     if (rawCpf.length === 11) {
-      const previousOrder = orders.find(o => o.customer && o.customer.cpfClean === rawCpf);
+      const previousOrder = orders.find(o => o.customer && String(o.customer.cpfClean) === rawCpf);
       if (previousOrder) {
         setCustomerInfo(prev => ({ ...prev, name: previousOrder.customer.name, phone: previousOrder.customer.phone }));
       }
@@ -155,7 +185,7 @@ export default function App() {
     e.preventDefault();
     if (cart.length === 0) return;
 
-    const cpfApenasNumeros = customerInfo.cpf.replace(/\D/g, '');
+    const cpfApenasNumeros = String(customerInfo.cpf).replace(/\D/g, '');
     
     const newOrder = {
       id: Date.now().toString(),
@@ -179,13 +209,13 @@ export default function App() {
     // Desconta do Estoque
     let updatedProducts = [...products];
     for (const item of cart) {
-      const pIndex = updatedProducts.findIndex(p => p.id === item.product.id);
+      const pIndex = updatedProducts.findIndex(p => String(p.id) === String(item.product.id));
       if (pIndex !== -1) {
         let p = { ...updatedProducts[pIndex] };
         if (Array.isArray(p.sizes) && p.sizes.length > 0) {
           p.sizes = p.sizes.map(sz => sz.name === item.size ? { ...sz, stock: Math.max(0, sz.stock - item.quantity) } : sz);
         } else {
-          p.stock = Math.max(0, p.stock - item.quantity);
+          p.stock = Math.max(0, (p.stock || 0) - item.quantity);
         }
         updatedProducts[pIndex] = p;
       }
@@ -215,13 +245,13 @@ export default function App() {
     let updatedProducts = [...products];
     for (const item of (cancelModalOrder.items || [])) {
       const pId = item.productId || item.product?.id;
-      const pIndex = updatedProducts.findIndex(p => p.id === pId);
+      const pIndex = updatedProducts.findIndex(p => String(p.id) === String(pId));
       if (pIndex !== -1) {
         let p = { ...updatedProducts[pIndex] };
         if (Array.isArray(p.sizes) && p.sizes.length > 0) {
-          p.sizes = p.sizes.map(sz => sz.name === item.size ? { ...sz, stock: sz.stock + item.quantity } : sz);
+          p.sizes = p.sizes.map(sz => sz.name === item.size ? { ...sz, stock: (parseInt(sz.stock) || 0) + (parseInt(item.quantity) || 0) } : sz);
         } else {
-          p.stock = (p.stock || 0) + item.quantity;
+          p.stock = (parseInt(p.stock) || 0) + (parseInt(item.quantity) || 0);
         }
         updatedProducts[pIndex] = p;
       }
@@ -292,11 +322,11 @@ export default function App() {
             <div className="mb-6">
               {p.promoPrice ? (
                 <div className="flex items-end gap-3">
-                  <span className="text-3xl font-bold text-rose-600">R$ {p.promoPrice.toFixed(2)}</span>
-                  <span className="text-lg text-gray-400 line-through mb-1">R$ {p.price.toFixed(2)}</span>
+                  <span className="text-3xl font-bold text-rose-600">R$ {Number(p.promoPrice).toFixed(2)}</span>
+                  <span className="text-lg text-gray-400 line-through mb-1">R$ {Number(p.price).toFixed(2)}</span>
                 </div>
               ) : (
-                <span className="text-3xl font-bold text-gray-900">R$ {p.price.toFixed(2)}</span>
+                <span className="text-3xl font-bold text-gray-900">R$ {Number(p.price || 0).toFixed(2)}</span>
               )}
             </div>
 
@@ -308,15 +338,15 @@ export default function App() {
                     <button 
                       key={sz.name}
                       onClick={() => addToCart(p, sz.name)}
-                      disabled={sz.stock === 0}
+                      disabled={parseInt(sz.stock) === 0}
                       className={`py-3 px-4 rounded-xl border-2 font-bold transition-all flex flex-col items-center justify-center
-                        ${sz.stock === 0 
+                        ${parseInt(sz.stock) === 0 
                           ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed' 
                           : 'border-gray-200 text-gray-700 hover:border-gray-900 hover:text-gray-900'}`}
                     >
                       <span className="text-lg">{sz.name}</span>
-                      {sz.stock > 0 && sz.stock <= 3 && <span className="text-[10px] text-rose-500 mt-1">Restam {sz.stock}</span>}
-                      {sz.stock === 0 && <span className="text-[10px] mt-1">Esgotado</span>}
+                      {parseInt(sz.stock) > 0 && parseInt(sz.stock) <= 3 && <span className="text-[10px] text-rose-500 mt-1">Restam {sz.stock}</span>}
+                      {parseInt(sz.stock) === 0 && <span className="text-[10px] mt-1">Esgotado</span>}
                     </button>
                   ))}
                 </div>
@@ -403,7 +433,7 @@ export default function App() {
               <p className="font-bold text-gray-900 text-lg">{order.customer?.name || 'Cliente'}</p>
               <p className="text-gray-600 text-sm">CPF: {order.customer?.cpf || 'Não informado'}</p>
               {order.customer?.phone && (
-                <a href={`https://wa.me/55${order.customer.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="text-green-600 font-medium hover:underline flex items-center mt-2 w-max">
+                <a href={`https://wa.me/55${String(order.customer.phone).replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="text-green-600 font-medium hover:underline flex items-center mt-2 w-max">
                   <MessageCircle className="h-4 w-4 mr-1" /> WhatsApp: {order.customer.phone}
                 </a>
               )}
@@ -421,9 +451,9 @@ export default function App() {
             <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Itens Reservados</h3>
             <ul className="divide-y divide-gray-100 border border-gray-100 rounded-2xl overflow-hidden mb-6">
               {(order.items || []).map((item, idx) => {
-                const itemName = item.name || item.product?.name || 'Produto Excluído';
+                const itemName = String(item.name || item.product?.name || 'Produto');
                 const itemImg = item.image || item.product?.image || '';
-                const itemPrice = item.price || item.product?.promoPrice || item.product?.price || 0;
+                const itemPrice = Number(item.price || item.product?.promoPrice || item.product?.price || 0);
                 return (
                   <li key={idx} className="p-4 flex items-center gap-4 bg-white">
                     {itemImg ? <img src={itemImg} className="w-14 h-14 rounded-xl object-cover border border-gray-100" alt="" /> : <div className="w-14 h-14 bg-gray-100 rounded-xl"></div>}
@@ -431,7 +461,7 @@ export default function App() {
                       <p className="font-bold text-gray-900 line-clamp-1">{itemName}</p>
                       <p className="text-sm text-gray-500">Tam: {item.size || 'Único'} | Qtd: {item.quantity}</p>
                     </div>
-                    <span className="font-black text-gray-900 whitespace-nowrap">R$ {(itemPrice * item.quantity).toFixed(2)}</span>
+                    <span className="font-black text-gray-900 whitespace-nowrap">R$ {(itemPrice * (parseInt(item.quantity)||1)).toFixed(2)}</span>
                   </li>
                 );
               })}
@@ -439,7 +469,7 @@ export default function App() {
 
             <div className="flex justify-between items-center text-xl font-black text-gray-900 mb-6 bg-rose-50 p-4 rounded-2xl text-rose-700">
               <span>Total da Reserva:</span>
-              <span>R$ {(order.total || 0).toFixed(2)}</span>
+              <span>R$ {Number(order.total || 0).toFixed(2)}</span>
             </div>
 
             {isAdminLoggedIn && (
@@ -514,11 +544,11 @@ export default function App() {
                             <div>
                               {product.promoPrice ? (
                                 <div className="flex flex-col">
-                                  <span className="text-xs text-gray-400 line-through">R$ {product.price.toFixed(2)}</span>
-                                  <span className="text-xl font-black text-rose-600">R$ {product.promoPrice.toFixed(2)}</span>
+                                  <span className="text-xs text-gray-400 line-through">R$ {Number(product.price).toFixed(2)}</span>
+                                  <span className="text-xl font-black text-rose-600">R$ {Number(product.promoPrice).toFixed(2)}</span>
                                 </div>
                               ) : (
-                                <span className="text-xl font-black text-gray-900">R$ {product.price.toFixed(2)}</span>
+                                <span className="text-xl font-black text-gray-900">R$ {Number(product.price || 0).toFixed(2)}</span>
                               )}
                             </div>
                             <div className="bg-gray-50 p-2 rounded-full group-hover:bg-rose-50 transition-colors">
@@ -555,7 +585,7 @@ export default function App() {
         <div className="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden">
           <ul className="divide-y divide-gray-100">
             {cart.map(item => {
-              const price = item.product.promoPrice || item.product.price;
+              const price = Number(item.product.promoPrice || item.product.price || 0);
               return (
                 <li key={item.cartItemId} className="p-6 flex flex-col sm:flex-row items-center gap-6 hover:bg-gray-50 transition-colors">
                   <img src={item.product.image} alt={item.product.name} className="w-24 h-24 object-cover rounded-2xl border border-gray-100 shadow-sm" />
@@ -583,7 +613,7 @@ export default function App() {
           <div className="bg-gray-900 p-8 text-white">
             <div className="flex justify-between items-center mb-8 border-b border-gray-700 pb-6">
               <span className="text-lg text-gray-300">Total a pagar na retirada:</span>
-              <span className="text-4xl font-extrabold text-white">R$ {cartTotal.toFixed(2)}</span>
+              <span className="text-4xl font-extrabold text-white">R$ {Number(cartTotal).toFixed(2)}</span>
             </div>
             
             <form onSubmit={handleCheckout} className="space-y-5">
@@ -666,9 +696,9 @@ export default function App() {
   const renderMyOrders = () => {
     const handleSearch = (e) => {
       e.preventDefault();
-      const rawCpf = searchCpf.replace(/\D/g, '');
+      const rawCpf = String(searchCpf).replace(/\D/g, '');
       if(rawCpf.length === 11) {
-        const clientOrders = orders.filter(o => o.customer && o.customer.cpfClean === rawCpf);
+        const clientOrders = orders.filter(o => o.customer && String(o.customer.cpfClean) === rawCpf);
         setFoundOrders(clientOrders);
       } else {
         alert("Digite um CPF válido com 11 números.");
@@ -714,7 +744,7 @@ export default function App() {
                     <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
                       <div>
                         <span className="text-xs text-gray-500 uppercase tracking-wider font-bold block">Pedido #{order.orderNumber || order.id}</span>
-                        <span className="text-sm text-gray-900 font-medium">{new Date(order.date).toLocaleDateString('pt-BR')} às {new Date(order.date).toLocaleTimeString('pt-BR')}</span>
+                        <span className="text-sm text-gray-900 font-medium">{order.date ? new Date(order.date).toLocaleString('pt-BR') : ''}</span>
                       </div>
                       <span className={`text-xs font-bold px-3 py-1 rounded-full ${order.status === 'Cancelado' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}`}>{order.status}</span>
                     </div>
@@ -726,9 +756,9 @@ export default function App() {
                       )}
                       <ul className="divide-y divide-gray-100">
                         {(order.items || []).map((item, idx) => {
-                          const itemName = item.name || item.product?.name || 'Produto Excluído';
+                          const itemName = String(item.name || item.product?.name || 'Produto');
                           const itemImg = item.image || item.product?.image || '';
-                          const itemPrice = item.price || item.product?.promoPrice || item.product?.price || 0;
+                          const itemPrice = Number(item.price || item.product?.promoPrice || item.product?.price || 0);
                           return (
                             <li key={idx} className="py-3 flex items-center gap-4">
                               {itemImg && <img src={itemImg} className="w-12 h-12 rounded-lg object-cover border border-gray-100" alt="" />}
@@ -736,14 +766,14 @@ export default function App() {
                                 <p className="text-sm font-bold text-gray-900">{itemName}</p>
                                 <p className="text-xs text-gray-500">Tam: {item.size || 'Único'} | Qtd: {item.quantity}</p>
                               </div>
-                              <span className="text-sm font-bold text-gray-900">R$ {(itemPrice * item.quantity).toFixed(2)}</span>
+                              <span className="text-sm font-bold text-gray-900">R$ {(itemPrice * (parseInt(item.quantity)||1)).toFixed(2)}</span>
                             </li>
                           );
                         })}
                       </ul>
                       <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
                         <span className="text-gray-600 font-medium text-sm">Total da Reserva:</span>
-                        <span className="text-xl font-black text-rose-600">R$ {(order.total || 0).toFixed(2)}</span>
+                        <span className="text-xl font-black text-rose-600">R$ {Number(order.total || 0).toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
@@ -833,7 +863,7 @@ export default function App() {
 
     const printOrder = (order) => {
       const printWindow = window.open('', '_blank');
-      const orderDate = new Date(order.date).toLocaleString('pt-BR');
+      const orderDate = order.date ? new Date(order.date).toLocaleString('pt-BR') : '';
       const html = `
         <html><head><title>Pedido #${order.orderNumber || order.id}</title>
         <style>
@@ -853,8 +883,8 @@ export default function App() {
           </div>
           <div style="border-bottom: 1px dashed #000; margin-bottom: 10px;"></div>
           ${(order.items || []).map(item => {
-            const itemName = item.name || item.product?.name || 'Produto';
-            const itemPrice = item.price || item.product?.promoPrice || item.product?.price || 0;
+            const itemName = String(item.name || item.product?.name || 'Produto');
+            const itemPrice = Number(item.price || item.product?.promoPrice || item.product?.price || 0);
             return `
               <div class="item">
                 <span>${item.quantity}x ${itemName.length > 15 ? itemName.substring(0, 15) + '...' : itemName} (${item.size || 'Único'})</span>
@@ -862,7 +892,7 @@ export default function App() {
               </div>
             `;
           }).join('')}
-          <div class="total">TOTAL: R$ ${(order.total || 0).toFixed(2)}</div>
+          <div class="total">TOTAL: R$ ${Number(order.total || 0).toFixed(2)}</div>
           <p style="text-align:center; font-size: 0.8rem; margin-top:20px;">Pagamento a ser realizado na retirada.</p>
           <script>window.onload = function() { window.print(); window.close(); }</script>
         </body></html>`;
@@ -923,7 +953,7 @@ export default function App() {
                       <tr key={order.id} onClick={() => setSelectedOrder(order)} className="hover:bg-gray-100 transition-colors cursor-pointer" title="Clique para abrir os detalhes">
                         <td className="p-4">
                           <p className="font-bold text-gray-900">#{order.orderNumber || order.id}</p>
-                          <span className="text-xs text-gray-500 block mb-1">{new Date(order.date).toLocaleString('pt-PT')}</span>
+                          <span className="text-xs text-gray-500 block mb-1">{order.date ? new Date(order.date).toLocaleString('pt-PT') : ''}</span>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${order.status === 'Retirado (Pago)' ? 'bg-green-100 text-green-800' : order.status === 'Cancelado' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}`}>
                             {order.status || 'Aguardando'}
                           </span>
@@ -932,13 +962,13 @@ export default function App() {
                           <p className="font-medium text-gray-900">{order.customer?.name || 'Sem nome'}</p>
                           <p className="text-xs text-gray-500">{order.customer?.cpf}</p>
                           {order.customer?.phone && (
-                            <a href={`https://wa.me/55${order.customer.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-xs text-green-600 hover:underline">{order.customer.phone}</a>
+                            <a href={`https://wa.me/55${String(order.customer.phone).replace(/\D/g,'')}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-xs text-green-600 hover:underline">{order.customer.phone}</a>
                           )}
                         </td>
                         <td className="p-4">
                           <ul className="text-xs text-gray-600 space-y-1">
                             {(order.items || []).map((item, idx) => {
-                              const itemName = item.name || item.product?.name || 'Produto Excluído';
+                              const itemName = String(item.name || item.product?.name || 'Produto');
                               const itemImg = item.image || item.product?.image || '';
                               return (
                                 <li key={idx} className="flex items-center gap-2">
@@ -950,7 +980,7 @@ export default function App() {
                           </ul>
                         </td>
                         <td className="p-4 font-black text-gray-900">
-                          R$ {(order.total || 0).toFixed(2)}
+                          R$ {Number(order.total || 0).toFixed(2)}
                         </td>
                         <td className="p-4 text-right">
                           <button onClick={(e) => { e.stopPropagation(); printOrder(order); }} className="inline-flex items-center px-4 py-2 bg-gray-900 hover:bg-rose-600 text-white text-sm font-bold rounded-xl transition-colors shadow-sm">
@@ -1026,11 +1056,11 @@ export default function App() {
                           <td className="p-4">
                             {p.promoPrice ? (
                               <div>
-                                <span className="text-rose-600 font-black">{p.promoPrice.toFixed(2)}</span>
-                                <span className="text-xs text-gray-400 line-through block">{p.price.toFixed(2)}</span>
+                                <span className="text-rose-600 font-black">{Number(p.promoPrice).toFixed(2)}</span>
+                                <span className="text-xs text-gray-400 line-through block">{Number(p.price).toFixed(2)}</span>
                               </div>
                             ) : (
-                              <span className="text-gray-900 font-bold">{p.price.toFixed(2)}</span>
+                              <span className="text-gray-900 font-bold">{Number(p.price || 0).toFixed(2)}</span>
                             )}
                           </td>
                           <td className="p-4">
@@ -1180,21 +1210,21 @@ export default function App() {
   // --- RENDEREIZAÇÃO PRINCIPAL ---
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-gray-900 relative">
-      {view !== 'admin-dashboard' && view !== 'admin-login' && renderNavbar()}
+      {view !== 'admin-dashboard' && view !== 'admin-login' && safeRender(renderNavbar)}
       
       <main className="flex-grow">
-        {view === 'store' && renderStorefront()}
-        {view === 'cart' && renderCart()}
-        {view === 'checkout-success' && renderCheckoutSuccess()}
-        {view === 'my-orders' && renderMyOrders()}
-        {view === 'admin-login' && renderAdminLogin()}
-        {view === 'admin-dashboard' && (isAdminLoggedIn ? renderAdminDashboard() : renderAdminLogin())}
+        {view === 'store' && safeRender(renderStorefront)}
+        {view === 'cart' && safeRender(renderCart)}
+        {view === 'checkout-success' && safeRender(renderCheckoutSuccess)}
+        {view === 'my-orders' && safeRender(renderMyOrders)}
+        {view === 'admin-login' && safeRender(renderAdminLogin)}
+        {view === 'admin-dashboard' && (isAdminLoggedIn ? safeRender(renderAdminDashboard) : safeRender(renderAdminLogin))}
       </main>
 
       {/* MODAIS SOBREPOSTOS */}
-      {renderProductModal()}
-      {renderOrderModal()}
-      {renderCancelModal()}
+      {safeRender(renderProductModal)}
+      {safeRender(renderOrderModal)}
+      {safeRender(renderCancelModal)}
 
       {view !== 'admin-dashboard' && (
         <footer className="bg-white border-t border-gray-200 py-8 mt-auto">
