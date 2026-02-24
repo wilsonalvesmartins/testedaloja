@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, X, Lock, Plus, Edit, Trash2, LogOut, MessageCircle, ArrowLeft, CheckCircle, Image as ImageIcon, Package, Tag, DollarSign, ClipboardList, Layers, FileText, Search, AlertCircle } from 'lucide-react';
+import { ShoppingBag, X, Lock, Plus, Edit, Trash2, LogOut, MessageCircle, ArrowLeft, CheckCircle, Image as ImageIcon, Package, Tag, DollarSign, ClipboardList, Layers, FileText, Search, AlertCircle, Printer } from 'lucide-react';
 
 // --- DADOS INICIAIS ---
 const defaultCategories = [
